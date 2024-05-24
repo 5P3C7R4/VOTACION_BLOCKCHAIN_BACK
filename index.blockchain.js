@@ -7,6 +7,8 @@ const express = require('express');
 const app = express();
 const port = 3001;
 
+let index = 0;
+
 // Configurar Web3
 const web3 = new Web3(process.env.GANACHE_URL);
 
@@ -50,8 +52,8 @@ async function getCandidatesCount() {
 }
 
 // Función para emitir un voto
-async function vote(candidateIndex) {
-    const tx = votingContract.methods.vote(candidateIndex);
+async function vote(candidateIndex, document) {
+    const tx = votingContract.methods.vote(candidateIndex, document);
     const gas = await tx.estimateGas({ from: account.address });
     const gasPrice = await web3.eth.getGasPrice();
     const data = tx.encodeABI();
@@ -75,6 +77,25 @@ async function getCandidateByIndex(candidateIndex) {
 }
 
 // Función para finalizar la votación
+async function startVoting() {
+    const tx = votingContract.methods.startVoting();
+    const gas = await tx.estimateGas({ from: account.address });
+    const gasPrice = await web3.eth.getGasPrice();
+    const data = tx.encodeABI();
+
+    const txData = {
+        from: account.address,
+        to: contractAddress,
+        data: data,
+        gas,
+        gasPrice
+    };
+
+    const receipt = await web3.eth.sendTransaction(txData);
+    return receipt;
+}
+
+// Función para finalizar la votación
 async function endVoting() {
     const tx = votingContract.methods.endVoting();
     const gas = await tx.estimateGas({ from: account.address });
@@ -93,58 +114,72 @@ async function endVoting() {
     return receipt;
 }
 
+
+
+
 // Rutas de la API
-app.post('/register', async (req, res) => {
-    const { voterAddress } = req.body;
-    try {
-        await registerVoter(voterAddress);
-        res.status(200).send();
-    } catch (error) {
-        console.error(error);
-        res.status(500).send('Error registering voter');
-    }
-});
 
-app.post('/vote', async (req, res) => {
-    const { candidateIndex } = req.body;
-    try {
-        const receipt = await vote(candidateIndex);
-        console.log("Voto correcto");
-        res.send(receipt);
-    } catch (error) {
-        console.error(error);
-        res.status(500).send('Error while voting');
-    }
-});
 
+
+//Get number of candidates
 app.get('/candidateCount', async (req, res) => {
+    const receipt = await getCandidatesCount();
+    res.send(receipt);
+})
+
+//Get candidate by index
+app.get('/getCandidateByIndex', async (req, res) => {
+    const receipt = await getCandidateByIndex(req.query.index);
+    res.send(receipt.name);
+})
+
+//Initiate voting
+app.post('/startVoting', async (req, res) => {
     try {
-        const receipt = await getCandidatesCount();
+        const secret = req.body.secret_key
+        if (secret == process.env.SECRET_KEY) {
+            const receipt = await startVoting();
+            res.send(receipt);
+        } else {
+            res.status(400).send('Bad secret key');
+        }
+    } catch (error) {
+        let msg = error.data ? error.data.reason ? error.data.reason : "Internal server error" : "Internal server error";
+        res.status(500).send(msg);
+    }
+});
+
+//Vote for some candidate
+app.post('/vote', async (req, res) => {
+    try {
+        const { candidateIndex, document } = req.body;
+        console.log("🚀 ~ app.post ~ candidateIndex, document:", candidateIndex, document)
+        const receipt = await vote(candidateIndex, document);
         res.send(receipt);
     } catch (error) {
         console.error(error);
-        res.status(500).send('Error obtaining candidate count');
+        let msg = error.data ? error.data.reason ? error.data.reason : "Internal server error" : "Internal server error";
+        res.status(500).send(msg);
     }
-})
+});
 
-app.get('/getCandidateByIndex', async (req, res) => {
-    try {
-        const receipt = await getCandidateByIndex(req.query.index);
-        res.send(receipt.name);
-    } catch (error) {
-        res.status(500).send('Error obtaining candidate count');
-    }
-})
-
+//Terminate voting
 app.post('/endVoting', async (req, res) => {
     try {
-        const receipt = await endVoting();
-        res.send(receipt);
+        const secret = req.body.secret_key
+        if (secret == process.env.SECRET_KEY) {
+            const receipt = await endVoting();
+            res.send(receipt);
+        } else {
+            res.status(400).send('Bad secret key');
+        }
     } catch (error) {
-        res.status(500).send('Error ending voting');
+        let msg = error.data ? error.data.reason ? error.data.reason : "Internal server error" : "Internal server error";
+        res.status(500).send(msg);
     }
 });
 
-app.listen(port, () => {
+app.listen(port, async () => {
     console.log(`Server running at http://localhost:${port}`);
+    await registerVoter(process.env.ADDRESS);
 });

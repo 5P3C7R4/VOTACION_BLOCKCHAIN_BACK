@@ -83,14 +83,13 @@ controller.postVote = async (req, res) => {
         }
 
         const candidates = await Candidate.find();
-        
-        // //Register Voter
-        await axios.post(urlBlockChain + "register", { voterAddress: process.env.ADDRESS })
-        await axios.post(urlBlockChain + "vote", { candidateIndex: parseInt(candidateMap[candidates.find(el => el._id.toString() == req.body.candidate).name]) })
-        
-        
-        const voter = await Vote.find();
+
         const document = req.body.document;
+        // //Register Voter
+        await axios.post(urlBlockChain + "vote", { candidateIndex: parseInt(candidateMap[candidates.find(el => el._id.toString() == req.body.candidate).name]), document })
+
+
+        const voter = await Vote.find();
         if (voter.findIndex(el => el.document == document) != -1) {
             res.status(400).send("Ya se ha registrado un voto para este documento");
             return;
@@ -98,11 +97,19 @@ controller.postVote = async (req, res) => {
         const vote = new Vote(req.body);
         const saved = await vote.save()
         res.send(saved);
-        return;
     } catch (error) {
-        console.log(error);
-        res.sendStatus(500).send();
-        return;
+        if (error.response) {
+            if (error.response.data == "Voting has ended") {
+                res.status(401).send("Voting has ended");
+            }
+            if (error.response.data == "Voting has not started") {
+                res.status(401).send("Voting has not started");
+            }
+        } else {
+            console.log(error);
+            res.status(401).send();
+        }
+
     }
 }
 

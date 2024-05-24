@@ -17,15 +17,12 @@ contract Voting {
     address public owner;
     mapping(address => Voter) public voters;
     Candidate[] public candidates;
-    bool public votingEnded;
+    string[] private docs;
+    bool public votingStarted = false;
+    bool public votingEnded = false;
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Only owner can call this function");
-        _;
-    }
-
-    modifier hasNotVoted() {
-        require(!voters[msg.sender].hasVoted, "You have already voted");
         _;
     }
 
@@ -36,6 +33,7 @@ contract Voting {
 
     modifier votingActive() {
         require(!votingEnded, "Voting has ended");
+        require(votingStarted, "Voting has not started");
         _;
     }
 
@@ -49,23 +47,42 @@ contract Voting {
         }
     }
 
-    function getCandidateCount() public view returns (uint256) {
-        return candidates.length;
+    function stringExists(string memory searchString) public view returns (bool) {
+        for (uint i = 0; i < docs.length; i++) {
+            if (keccak256(abi.encodePacked(docs[i])) == keccak256(abi.encodePacked(searchString))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     function registerVoter(address voter) public {
         voters[voter].isRegistered = true;
     }
 
-    function vote(uint8 candidateIndex) public isRegistered hasNotVoted votingActive {
+    function vote(uint8 candidateIndex, string memory document) public isRegistered votingActive {
+        require(votingStarted, "Voting has not started");
+        require(!stringExists(document), "A vote has been emitted with this document");
         require(candidateIndex < candidates.length, "Invalid candidate index");
         voters[msg.sender].hasVoted = true;
         voters[msg.sender].vote = candidateIndex;
+        docs.push(document);
         candidates[candidateIndex].voteCount += 1;
     }
 
+    function startVoting() public onlyOwner {
+        require(!votingStarted, "Voting has started");
+        votingStarted = true;
+    }
+
     function endVoting() public onlyOwner {
+        require(votingStarted, "Voting has not started");
+        require(!votingEnded, "Voting has already ended");
         votingEnded = true;
+    }
+
+    function getCandidateCount() public view returns (uint256) {
+        return candidates.length;
     }
 
     function getCandidate(uint8 index) public view returns (string memory name, uint256 voteCount) {
@@ -75,6 +92,7 @@ contract Voting {
     }
 
     function getWinner() public view returns (string memory winnerName, uint256 winnerVoteCount) {
+
         require(votingEnded, "Voting is still ongoing");
         uint256 winningVoteCount = 0;
         uint8 winningCandidateIndex = 0;
